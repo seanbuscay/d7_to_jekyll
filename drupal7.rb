@@ -3,16 +3,29 @@ module JekyllImport
     class Drupal7 < Importer
       # Reads a MySQL database via Sequel and creates a post file for each story
       # and blog node.
-      QUERY = "SELECT n.nid, \
-                      n.title, \
-                      fdb.body_value, \
-                      n.created, \
-                      n.status \
-               FROM node AS n, \
-                    field_data_body AS fdb \
-               WHERE (n.type = 'blog' OR n.type = 'story' OR n.type = 'article') \
-               AND n.nid = fdb.entity_id \
-               AND n.vid = fdb.revision_id"
+      QUERY = <<SQL
+      SELECT
+      n.nid,
+      n.title,
+      n.created,
+      n.changed,
+      b.body_value,
+      b.body_summary,
+      n.status,
+      l.alias,
+      GROUP_CONCAT( d.name SEPARATOR ', ' ) AS 'tags'
+
+      FROM url_alias l, node n
+      JOIN field_data_body b ON b.entity_id = n.nid
+      JOIN taxonomy_index t ON t.nid = n.nid
+      JOIN taxonomy_term_data d ON t.tid = d.tid
+
+      WHERE n.type = 'blog'
+      AND b.revision_id = n.vid
+      AND l.source = CONCAT( 'node/', n.nid )
+
+      GROUP BY n.nid
+SQL
 
       def self.validate(options)
         %w[dbname user].each do |option|
@@ -51,6 +64,7 @@ module JekyllImport
         unless prefix.empty?
           QUERY[" node "] = " " + prefix + "node "
           QUERY[" field_data_body "] = " " + prefix + "field_data_body "
+          QUERY[" url_alias "] = " " + prefix + "url_alias "
         end
 
         FileUtils.mkdir_p "_posts"
@@ -62,7 +76,10 @@ module JekyllImport
           node_id = post[:nid]
           title = post[:title]
           content = post[:body_value]
+          excerpt = post[:body_summary]
           created = post[:created]
+          permalink = '/'+post[:alias]
+          tags = post[:tags]
           time = Time.at(created)
           is_published = post[:status] == 1
           dir = is_published ? "_posts" : "_drafts"
@@ -74,7 +91,10 @@ module JekyllImport
           data = {
              'layout' => 'post',
              'title' => title.to_s,
+             'permalink' => permalink.to_s,
+             'excerpt' => excerpt.to_s,
              'created' => created,
+             'tags' => tags,
            }.delete_if { |k,v| v.nil? || v == ''}.to_yaml
 
           # Write out the data and content to file
