@@ -1,3 +1,7 @@
+# TODO: Document
+# TODO: Convert tags to yaml format
+# TODO: Replace the files directoy path.
+# Original: https://gist.github.com/amejiarosario/2515239
 module JekyllImport
   module Importers
     class Drupal7 < Importer
@@ -8,19 +12,20 @@ module JekyllImport
       n.nid,
       n.title,
       n.created,
+      n.type,
       n.changed,
       b.body_value,
       b.body_summary,
       n.status,
       l.alias,
-      GROUP_CONCAT( d.name SEPARATOR ', ' ) AS 'tags'
+      GROUP_CONCAT( d.name SEPARATOR ',' ) AS 'tags'
 
       FROM url_alias l, node n
       JOIN field_data_body b ON b.entity_id = n.nid
       JOIN taxonomy_index t ON t.nid = n.nid
       JOIN taxonomy_term_data d ON t.tid = d.tid
 
-      WHERE n.type = 'blog'
+      WHERE (n.type = 'blog' OR n.type = 'story' OR n.type = 'article')
       AND b.revision_id = n.vid
       AND l.source = CONCAT( 'node/', n.nid )
 
@@ -76,10 +81,12 @@ SQL
           node_id = post[:nid]
           title = post[:title]
           content = post[:body_value]
+          content_type = post[:type]
           excerpt = post[:body_summary]
           created = post[:created]
           permalink = '/'+post[:alias]
           tags = post[:tags]
+          tags = tags.split(',')
           time = Time.at(created)
           is_published = post[:status] == 1
           dir = is_published ? "_posts" : "_drafts"
@@ -92,9 +99,10 @@ SQL
              'layout' => 'post',
              'title' => title.to_s,
              'permalink' => permalink.to_s,
-             'excerpt' => excerpt.to_s,
              'created' => created,
              'tags' => tags,
+             'content_type' => content_type.to_s,
+             'excerpt' => excerpt.to_s
            }.delete_if { |k,v| v.nil? || v == ''}.to_yaml
 
           # Write out the data and content to file
